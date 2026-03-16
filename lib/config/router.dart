@@ -12,6 +12,7 @@ import '../screens/deal_detail_screen.dart';
 import '../screens/psf_list_screen.dart';
 import '../screens/funded_screen.dart';
 import '../screens/updates_screen.dart';
+import '../providers/update_checker_provider.dart';
 import 'theme.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -149,6 +150,14 @@ class _Shell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Check for updates on first build
+    ref.listen(updateCheckerProvider, (_, next) {
+      final update = next.valueOrNull;
+      if (update != null && context.mounted) {
+        showUpdateDialog(context, update);
+      }
+    });
+
     final loc = GoRouterState.of(context).matchedLocation;
     return Scaffold(
       body: child,
