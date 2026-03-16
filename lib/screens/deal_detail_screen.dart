@@ -29,76 +29,73 @@ class DealDetailScreen extends ConsumerWidget {
 
           return DefaultTabController(
             length: 3,
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-                  decoration: const BoxDecoration(
+            child: NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                SliverToBoxAdapter(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
                     color: C.surface,
-                    border: Border(bottom: BorderSide(color: C.border)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 42, height: 42,
-                        decoration: BoxDecoration(
-                          color: C.approvedBg,
-                          borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42, height: 42,
+                          decoration: BoxDecoration(
+                            color: C.approvedBg,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.business_center, size: 22, color: C.primary),
                         ),
-                        child: const Icon(Icons.business_center, size: 22, color: C.primary),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(businessName,
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: C.textPrimary)),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                if (createdAt != null)
-                                  Text(DateFormat('MMM d, yyyy').format(createdAt),
-                                      style: const TextStyle(fontSize: 12, color: C.textTertiary)),
-                                if (_v(data['mode']) != null) ...[
-                                  const Text('  ·  ', style: TextStyle(color: C.textTertiary)),
-                                  Text(data['mode'], style: const TextStyle(fontSize: 12, color: C.textTertiary)),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(businessName,
+                                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: C.textPrimary)),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  if (createdAt != null)
+                                    Text(DateFormat('MMM d, yyyy').format(createdAt),
+                                        style: const TextStyle(fontSize: 12, color: C.textTertiary)),
+                                  if (_v(data['mode']) != null) ...[
+                                    const Text('  ·  ', style: TextStyle(color: C.textTertiary)),
+                                    Text(data['mode'], style: const TextStyle(fontSize: 12, color: C.textTertiary)),
+                                  ],
+                                  if (_v(data['send_status']) != null) ...[
+                                    const Text('  ·  ', style: TextStyle(color: C.textTertiary)),
+                                    Text(data['send_status'], style: const TextStyle(fontSize: 12, color: C.textTertiary)),
+                                  ],
                                 ],
-                                if (_v(data['send_status']) != null) ...[
-                                  const Text('  ·  ', style: TextStyle(color: C.textTertiary)),
-                                  Text(data['send_status'], style: const TextStyle(fontSize: 12, color: C.textTertiary)),
-                                ],
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                // Tabs
-                Container(
-                  color: C.surface,
-                  child: const TabBar(
-                    tabs: [
-                      Tab(text: 'Offers'),
-                      Tab(text: 'Declines'),
-                      Tab(text: 'Stips'),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      _OffersTab(dealId: dealId),
-                      _DeclinesTab(dealId: dealId),
-                      _StipsTab(dealId: dealId),
-                    ],
+                const SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _TabBarDelegate(
+                    TabBar(
+                      tabs: [
+                        Tab(text: 'Offers'),
+                        Tab(text: 'Declines'),
+                        Tab(text: 'Stips'),
+                      ],
+                    ),
                   ),
                 ),
               ],
+              body: TabBarView(
+                children: [
+                  _OffersTab(dealId: dealId),
+                  _DeclinesTab(dealId: dealId),
+                  _StipsTab(dealId: dealId),
+                ],
+              ),
             ),
           );
         },
@@ -128,6 +125,24 @@ class DealDetailScreen extends ConsumerWidget {
   }
 }
 
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  const _TabBarDelegate(this.tabBar);
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(color: C.surface, child: tabBar);
+  }
+
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
+}
+
 // ── Offers Tab ──
 
 class _OffersTab extends ConsumerWidget {
@@ -141,7 +156,12 @@ class _OffersTab extends ConsumerWidget {
       loading: () => const Center(child: CrocLoader(size: 64, message: 'Loading...')),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (responses) {
-        final offers = responses.where((r) => r.isApproved).toList();
+        final seen = <String>{};
+        final offers = responses.where((r) {
+          if (!r.isApproved) return false;
+          final key = '${r.lenderName ?? r.fromEmail}_${r.receivedAt}';
+          return seen.add(key);
+        }).toList();
         if (offers.isEmpty) {
           return const Center(
             child: Text('No offers yet', style: TextStyle(color: C.textTertiary)),
@@ -308,7 +328,12 @@ class _DeclinesTab extends ConsumerWidget {
       loading: () => const Center(child: CrocLoader(size: 64, message: 'Loading...')),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (responses) {
-        final declines = responses.where((r) => r.isDeclined).toList();
+        final seen = <String>{};
+        final declines = responses.where((r) {
+          if (!r.isDeclined) return false;
+          final key = '${r.lenderName ?? r.fromEmail}_${r.receivedAt}';
+          return seen.add(key);
+        }).toList();
         if (declines.isEmpty) {
           return const Center(
             child: Text('No declines', style: TextStyle(color: C.textTertiary)),
@@ -449,7 +474,12 @@ class _StipsTab extends ConsumerWidget {
       loading: () => const Center(child: CrocLoader(size: 64, message: 'Loading...')),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (responses) {
-        final stips = responses.where((r) => r.isStips).toList();
+        final seen = <String>{};
+        final stips = responses.where((r) {
+          if (!r.isStips) return false;
+          final key = '${r.lenderName ?? r.fromEmail}_${r.receivedAt}';
+          return seen.add(key);
+        }).toList();
         if (stips.isEmpty) {
           return const Center(
             child: Text('No stips requested', style: TextStyle(color: C.textTertiary)),

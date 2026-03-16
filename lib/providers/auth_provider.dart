@@ -22,6 +22,14 @@ final biometricAvailableProvider = FutureProvider<bool>((ref) async {
   return canCheck && isSupported;
 });
 
+// ── Check if security is set up (biometric or PIN) ──
+
+final securitySetupDoneProvider = FutureProvider<bool>((ref) async {
+  final prefs = await SharedPreferences.getInstance();
+  return (prefs.getBool('biometric_enabled') ?? false) ||
+      (prefs.getBool('pin_enabled') ?? false);
+});
+
 // ── Login controller ──
 
 final loginProvider =
@@ -31,17 +39,10 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
   @override
   Future<void> build() async {}
 
-  /// Login with email or username + password
   Future<void> login(String identifier, String password) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      // If identifier doesn't contain @, treat as username and look up email
       String email = identifier;
-      if (!identifier.contains('@')) {
-        // Try to find email by username in profiles or use identifier as-is
-        // For now, append domain if it looks like a username
-        email = identifier;
-      }
 
       await _supabase.auth.signInWithPassword(email: email, password: password);
 
@@ -52,14 +53,12 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
         OneSignal.User.addTagWithKey('user_email', email);
       }
 
-      // Save credentials for biometric re-login
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_email', email);
       await prefs.setBool('has_saved_session', true);
     });
   }
 
-  /// Biometric login — re-authenticates using saved session
   Future<void> biometricLogin() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
@@ -74,13 +73,31 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
 
       if (!authenticated) throw Exception('Authentication failed');
 
-      // Supabase persists the session — if there's a valid session, we're good
       final session = _supabase.auth.currentSession;
       if (session == null) {
         throw Exception('No saved session. Please login with email first.');
       }
 
-      debugPrint('[auth] Biometric login successful for ${_supabase.auth.currentUser?.email}');
+      debugPrint('[auth] Biometric login successful');
+    });
+  }
+
+  Future<void> pinLogin(String pin) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final prefs = await SharedPreferences.getInstance();
+      final savedPin = prefs.getString('app_pin');
+
+      if (savedPin == null || savedPin != pin) {
+        throw Exception('Incorrect PIN');
+      }
+
+      final session = _supabase.auth.currentSession;
+      if (session == null) {
+        throw Exception('No saved session. Please login with email first.');
+      }
+
+      debugPrint('[auth] PIN login successful');
     });
   }
 
@@ -94,7 +111,7 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
   }
 }
 
-// ── Check if user has a saved session for biometric login ──
+// ── Check if user has a saved session for biometric/PIN login ──
 
 final hasSavedSessionProvider = FutureProvider<bool>((ref) async {
   final prefs = await SharedPreferences.getInstance();

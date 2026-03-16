@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/theme.dart';
 import '../providers/terms_provider.dart';
+import 'biometric_setup_screen.dart';
 
 class TermsScreen extends ConsumerWidget {
   const TermsScreen({super.key});
@@ -70,8 +71,14 @@ class TermsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () =>
-                    ref.read(termsAcceptedProvider.notifier).accept(),
+                onPressed: () async {
+                  await ref.read(termsAcceptedProvider.notifier).accept();
+                  if (context.mounted) {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const BiometricSetupScreen()),
+                    );
+                  }
+                },
                 child: const Text('I Agree'),
               ),
               const SizedBox(height: 10),
