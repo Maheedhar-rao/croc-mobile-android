@@ -1,0 +1,4 @@
+-dontwarn com.fasterxml.jackson.**
+-dontwarn com.google.auto.value.**
+-dontwarn io.opentelemetry.**
+-keep class com.onesignal.** { *; }

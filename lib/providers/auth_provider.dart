@@ -1,0 +1,104 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../config/env.dart';
+
+SupabaseClient get _supabase => Supabase.instance.client;
+
+final authStateProvider = StreamProvider<AuthState>((ref) {
+  return _supabase.auth.onAuthStateChange;
+});
+
+// ── Biometric support ──
+
+final biometricAvailableProvider = FutureProvider<bool>((ref) async {
+  final auth = LocalAuthentication();
+  final canCheck = await auth.canCheckBiometrics;
+  final isSupported = await auth.isDeviceSupported();
+  return canCheck && isSupported;
+});
+
+// ── Login controller ──
+
+final loginProvider =
+    AutoDisposeAsyncNotifierProvider<LoginNotifier, void>(LoginNotifier.new);
+
+class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  /// Login with email or username + password
+  Future<void> login(String identifier, String password) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      // If identifier doesn't contain @, treat as username and look up email
+      String email = identifier;
+      if (!identifier.contains('@')) {
+        // Try to find email by username in profiles or use identifier as-is
+        // For now, append domain if it looks like a username
+        email = identifier;
+      }
+
+      await _supabase.auth.signInWithPassword(email: email, password: password);
+
+      // Tag user in OneSignal for targeted push
+      if (Env.oneSignalAppId.isNotEmpty) {
+        OneSignal.login(email);
+        OneSignal.User.addEmail(email);
+        OneSignal.User.addTagWithKey('user_email', email);
+      }
+
+      // Save credentials for biometric re-login
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_email', email);
+      await prefs.setBool('has_saved_session', true);
+    });
+  }
+
+  /// Biometric login — re-authenticates using saved session
+  Future<void> biometricLogin() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final auth = LocalAuthentication();
+      final authenticated = await auth.authenticate(
+        localizedReason: 'Authenticate to access CROC',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false,
+        ),
+      );
+
+      if (!authenticated) throw Exception('Authentication failed');
+
+      // Supabase persists the session — if there's a valid session, we're good
+      final session = _supabase.auth.currentSession;
+      if (session == null) {
+        throw Exception('No saved session. Please login with email first.');
+      }
+
+      debugPrint('[auth] Biometric login successful for ${_supabase.auth.currentUser?.email}');
+    });
+  }
+
+  Future<void> logout() async {
+    if (Env.oneSignalAppId.isNotEmpty) {
+      OneSignal.logout();
+    }
+    await _supabase.auth.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('has_saved_session', false);
+  }
+}
+
+// ── Check if user has a saved session for biometric login ──
+
+final hasSavedSessionProvider = FutureProvider<bool>((ref) async {
+  final prefs = await SharedPreferences.getInstance();
+  final hasSaved = prefs.getBool('has_saved_session') ?? false;
+  final session = _supabase.auth.currentSession;
+  return hasSaved && session != null;
+});
