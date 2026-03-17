@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config/theme.dart';
 
-const _currentVersion = '1.1.0';
+const _currentVersion = '1.2.0';
 const _repoOwner = 'Maheedhar-rao';
 const _repoName = 'croc-mobile-android';
 
