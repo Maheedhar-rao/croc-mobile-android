@@ -18,6 +18,11 @@ Future<void> initNotifications() async {
   await _notifications.initialize(
     const InitializationSettings(android: android, iOS: darwin, macOS: darwin),
   );
+
+  // Enable foreground notification display on iOS
+  await _notifications
+      .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+      ?.requestPermissions(alert: true, badge: true, sound: true);
 }
 
 final realtimeProvider = Provider<void>((ref) {
@@ -49,6 +54,16 @@ final realtimeProvider = Provider<void>((ref) {
           final isStips = responseType.contains('STIP');
 
           if (!isOffer && !isDecline && !isStips) return;
+
+          // Skip old responses — only notify if created within the last 5 minutes
+          final createdAt = DateTime.tryParse(record['created_at']?.toString() ?? '');
+          if (createdAt != null) {
+            final age = DateTime.now().toUtc().difference(createdAt);
+            if (age.inMinutes > 5) {
+              debugPrint('[realtime] Skipping old response (${age.inMinutes}m ago)');
+              return;
+            }
+          }
 
           final lenderName = record['lender_name'] ?? record['from_email'] ?? 'A lender';
           final dealId = record['deal_id'];
@@ -85,6 +100,7 @@ Future<void> _fetchAndNotify(
   String lenderName,
   String label,
 ) async {
+  debugPrint('[realtime] _fetchAndNotify called: $lenderName, $label, deal $dealId');
   String businessName = '';
   try {
     if (dealId != null) {
@@ -105,7 +121,8 @@ Future<void> _fetchAndNotify(
 
   final nameDisplay = businessName.isNotEmpty ? businessName : 'Deal #$dealId';
 
-  _showNotification(
+  debugPrint('[realtime] Showing notification: $lenderName — $label | #$dealId · $nameDisplay');
+  await _showNotification(
     title: '$lenderName — $label',
     body: '#$dealId · $nameDisplay',
   );

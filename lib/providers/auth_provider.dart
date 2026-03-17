@@ -9,22 +9,38 @@ import '../config/env.dart';
 
 SupabaseClient get _supabase => Supabase.instance.client;
 
-// ── Biometric support ──
-
-final biometricAvailableProvider = FutureProvider<bool>((ref) async {
-  final auth = LocalAuthentication();
-  final canCheck = await auth.canCheckBiometrics;
-  final isSupported = await auth.isDeviceSupported();
-  return canCheck && isSupported;
-});
-
-// ── Check if security is set up (biometric or PIN) ──
+// ── Check if security setup screen was completed ──
 
 final securitySetupDoneProvider = FutureProvider<bool>((ref) async {
   final prefs = await SharedPreferences.getInstance();
-  return (prefs.getBool('biometric_enabled') ?? false) ||
-      (prefs.getBool('pin_enabled') ?? false);
+  return prefs.getBool('security_setup_done') ?? false;
 });
+
+// ── App locked state ──
+// Starts locked if user has PIN/biometric and a session exists
+
+final appLockedProvider =
+    AsyncNotifierProvider<AppLockedNotifier, bool>(AppLockedNotifier.new);
+
+class AppLockedNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    final prefs = await SharedPreferences.getInstance();
+    final session = _supabase.auth.currentSession;
+    final hasSecurity = (prefs.getBool('biometric_enabled') ?? false) ||
+        (prefs.getBool('pin_enabled') ?? false);
+    // Locked if: has session + has security setup (meaning user was previously logged in)
+    return session != null && hasSecurity;
+  }
+
+  Future<void> lock() async {
+    state = const AsyncData(true);
+  }
+
+  Future<void> unlock() async {
+    state = const AsyncData(false);
+  }
+}
 
 // ── Login controller ──
 
@@ -51,7 +67,9 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_email', email);
-      await prefs.setBool('has_saved_session', true);
+
+      // Unlock
+      await ref.read(appLockedProvider.notifier).unlock();
     });
   }
 
@@ -74,6 +92,8 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
         throw Exception('No saved session. Please login with email first.');
       }
 
+      // Unlock
+      await ref.read(appLockedProvider.notifier).unlock();
       debugPrint('[auth] Biometric login successful');
     });
   }
@@ -93,25 +113,26 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
         throw Exception('No saved session. Please login with email first.');
       }
 
+      // Unlock
+      await ref.read(appLockedProvider.notifier).unlock();
       debugPrint('[auth] PIN login successful');
     });
   }
 
   Future<void> logout() async {
-    if (Env.oneSignalAppId.isNotEmpty) {
-      OneSignal.logout();
-    }
-    await _supabase.auth.signOut();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('has_saved_session', false);
+    final hasSecurity = (prefs.getBool('biometric_enabled') ?? false) ||
+        (prefs.getBool('pin_enabled') ?? false);
+
+    if (hasSecurity) {
+      // Just lock — session stays, user unlocks with PIN/biometric
+      await ref.read(appLockedProvider.notifier).lock();
+    } else {
+      // Full sign out
+      if (Env.oneSignalAppId.isNotEmpty) {
+        OneSignal.logout();
+      }
+      await _supabase.auth.signOut();
+    }
   }
 }
-
-// ── Check if user has a saved session for biometric/PIN login ──
-
-final hasSavedSessionProvider = FutureProvider<bool>((ref) async {
-  final prefs = await SharedPreferences.getInstance();
-  final hasSaved = prefs.getBool('has_saved_session') ?? false;
-  final session = _supabase.auth.currentSession;
-  return hasSaved && session != null;
-});

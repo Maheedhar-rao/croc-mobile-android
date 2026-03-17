@@ -64,9 +64,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(loginProvider);
-    final hasSavedSession = ref.watch(hasSavedSessionProvider);
-    final showQuickLogin = (hasSavedSession.valueOrNull ?? false) &&
-        (_biometricEnabled || _pinEnabled);
+    final isLocked = ref.watch(appLockedProvider).valueOrNull ?? false;
+    final showQuickLogin = isLocked && (_biometricEnabled || _pinEnabled);
 
     ref.listen(loginProvider, (_, next) {
       if (next.hasError) {

@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/realtime_provider.dart';
 import '../providers/terms_provider.dart';
 import '../screens/login_screen.dart';
+import '../screens/security_setup_screen.dart';
 import '../screens/terms_screen.dart';
 import '../screens/deals_list_screen.dart';
 import '../screens/deal_detail_screen.dart';
@@ -23,6 +24,8 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     ref.listen(authStateProvider, (_, __) => notifyListeners());
     ref.listen(termsAcceptedProvider, (_, __) => notifyListeners());
+    ref.listen(securitySetupDoneProvider, (_, __) => notifyListeners());
+    ref.listen(appLockedProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -35,23 +38,40 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final loggedIn = Supabase.instance.client.auth.currentSession != null;
-      final onLogin = state.matchedLocation == '/login';
-      final onTerms = state.matchedLocation == '/terms';
+      final loc = state.matchedLocation;
+      final onLogin = loc == '/login';
+      final onTerms = loc == '/terms';
+      final onSecurity = loc == '/security-setup';
+      final lockedState = ref.read(appLockedProvider);
 
+      // Not logged in at all → login
       if (!loggedIn && !onLogin) return '/login';
-      if (loggedIn && onLogin) {
-        final accepted = ref.read(termsAcceptedProvider).valueOrNull ?? false;
-        return accepted ? '/deals' : '/terms';
-      }
 
-      if (loggedIn && !onTerms) {
-        final accepted = ref.read(termsAcceptedProvider).valueOrNull ?? false;
-        if (!accepted) return '/terms';
-      }
+      if (loggedIn) {
+        if (lockedState.isLoading) return null;
+        final isLocked = lockedState.valueOrNull ?? false;
 
-      if (loggedIn && onTerms) {
-        final accepted = ref.read(termsAcceptedProvider).valueOrNull ?? false;
-        if (accepted) return '/deals';
+        // App is locked → show login for PIN/biometric
+        if (isLocked) return onLogin ? null : '/login';
+
+        final termsState = ref.read(termsAcceptedProvider);
+        final securityState = ref.read(securitySetupDoneProvider);
+        if (termsState.isLoading || securityState.isLoading) return null;
+
+        final accepted = termsState.valueOrNull ?? false;
+        final securityDone = securityState.valueOrNull ?? false;
+
+        // Step 1: Terms
+        if (!accepted && !onTerms) return '/terms';
+        if (accepted && onTerms) {
+          return securityDone ? '/deals' : '/security-setup';
+        }
+
+        // Step 2: Security setup
+        if (accepted && !securityDone && !onSecurity) return '/security-setup';
+
+        // All done → go to deals
+        if (accepted && securityDone && (onLogin || onSecurity)) return '/deals';
       }
 
       return null;
@@ -64,6 +84,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/terms',
         builder: (_, __) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/security-setup',
+        builder: (_, __) => const SecuritySetupScreen(),
       ),
       ShellRoute(
         navigatorKey: _shellKey,
