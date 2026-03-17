@@ -9,10 +9,6 @@ import '../config/env.dart';
 
 SupabaseClient get _supabase => Supabase.instance.client;
 
-final authStateProvider = StreamProvider<AuthState>((ref) {
-  return _supabase.auth.onAuthStateChange;
-});
-
 // ── Biometric support ──
 
 final biometricAvailableProvider = FutureProvider<bool>((ref) async {

@@ -7,9 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config/theme.dart';
 
-const _currentVersion = '1.0.0';
+const _currentVersion = '1.1.0';
 const _repoOwner = 'Maheedhar-rao';
 const _repoName = 'croc-mobile-android';
+
+bool _updateDialogShown = false;
 
 final updateCheckerProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
@@ -51,6 +53,8 @@ final updateCheckerProvider = FutureProvider<Map<String, dynamic>?>((ref) async 
 });
 
 void showUpdateDialog(BuildContext context, Map<String, dynamic> update) {
+  if (_updateDialogShown) return;
+  _updateDialogShown = true;
   showDialog(
     context: context,
     barrierDismissible: false,

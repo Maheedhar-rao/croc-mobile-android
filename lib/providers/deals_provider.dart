@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/deal.dart';
 import '../models/delivery.dart';
 import '../models/lender_response.dart';
-import 'auth_provider.dart';
+import 'realtime_provider.dart';
 
 // ── Deals list — fast, light query ──
 

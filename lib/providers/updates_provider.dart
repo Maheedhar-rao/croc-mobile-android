@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/lender_response.dart';
-import 'auth_provider.dart';
+import 'realtime_provider.dart';
 
 // All recent lender responses across all user's deals
 final updatesProvider = FutureProvider<List<LenderResponse>>((ref) async {

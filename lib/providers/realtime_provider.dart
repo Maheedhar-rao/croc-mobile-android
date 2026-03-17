@@ -3,7 +3,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'auth_provider.dart';
 import 'deals_provider.dart';
 import 'updates_provider.dart';
 
@@ -40,13 +39,13 @@ final realtimeProvider = Provider<void>((ref) {
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'email_responses',
-        callback: (payload) async {
+        callback: (payload) {
           final record = payload.newRecord;
           final responseType = (record['response_type'] ?? '').toString().toUpperCase();
 
           // Only notify on offers, declines, and stips
-          final isOffer = responseType.contains('APPROV');
-          final isDecline = responseType.contains('DECLIN');
+          final isOffer = responseType.contains('APPROV') || responseType == 'OFFER';
+          final isDecline = responseType.contains('DECLIN') || responseType == 'PASS';
           final isStips = responseType.contains('STIP');
 
           if (!isOffer && !isDecline && !isStips) return;
@@ -56,41 +55,61 @@ final realtimeProvider = Provider<void>((ref) {
 
           debugPrint('[realtime] $responseType from $lenderName for deal $dealId');
 
-          // Fetch business name from deals table
-          String businessName = '';
-          try {
-            final deal = await client
-                .from('deals')
-                .select('business_name, subject')
-                .eq('id', dealId)
-                .maybeSingle();
-            if (deal != null) {
-              final bn = deal['business_name']?.toString().trim() ?? '';
-              final subj = deal['subject']?.toString().trim() ?? '';
-              businessName = bn.isNotEmpty ? bn : subj.isNotEmpty ? subj : '';
-            }
-          } catch (_) {}
-
           final label = isOffer ? 'OFFER' : isDecline ? 'DECLINED' : 'STIPS REQUESTED';
-          final nameDisplay = businessName.isNotEmpty ? businessName : 'Deal #$dealId';
 
-          _showNotification(
-            title: '$lenderName — $label',
-            body: '#$dealId · $nameDisplay',
-          );
+          // Fetch business name async without blocking
+          _fetchAndNotify(client, dealId, lenderName.toString(), label);
 
           // Invalidate providers to refresh UI
           ref.invalidate(updatesProvider);
           ref.invalidate(dealsProvider);
         },
       )
-      .subscribe();
+      .subscribe((status, error) {
+    debugPrint('[realtime] Channel status: $status, error: $error');
+  });
 
   ref.onDispose(() {
     debugPrint('[realtime] Disposing channel');
     channel.unsubscribe();
   });
 });
+
+final authStateProvider = StreamProvider<AuthState>((ref) {
+  return Supabase.instance.client.auth.onAuthStateChange;
+});
+
+Future<void> _fetchAndNotify(
+  SupabaseClient client,
+  dynamic dealId,
+  String lenderName,
+  String label,
+) async {
+  String businessName = '';
+  try {
+    if (dealId != null) {
+      final deal = await client
+          .from('deals')
+          .select('business_name, subject')
+          .eq('id', dealId)
+          .maybeSingle();
+      if (deal != null) {
+        final bn = deal['business_name']?.toString().trim() ?? '';
+        final subj = deal['subject']?.toString().trim() ?? '';
+        businessName = bn.isNotEmpty ? bn : subj.isNotEmpty ? subj : '';
+      }
+    }
+  } catch (e) {
+    debugPrint('[realtime] Failed to fetch deal info: $e');
+  }
+
+  final nameDisplay = businessName.isNotEmpty ? businessName : 'Deal #$dealId';
+
+  _showNotification(
+    title: '$lenderName — $label',
+    body: '#$dealId · $nameDisplay',
+  );
+}
 
 Future<void> _showNotification({
   required String title,

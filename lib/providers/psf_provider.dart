@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import '../models/psf.dart';
-import 'auth_provider.dart';
+import 'realtime_provider.dart';
 
 // ── PSF list ──
 

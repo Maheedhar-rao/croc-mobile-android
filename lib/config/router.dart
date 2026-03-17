@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/realtime_provider.dart';
 import '../providers/terms_provider.dart';
 import '../screens/login_screen.dart';
 import '../screens/terms_screen.dart';
