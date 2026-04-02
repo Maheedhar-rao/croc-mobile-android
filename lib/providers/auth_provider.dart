@@ -26,11 +26,12 @@ class AppLockedNotifier extends AsyncNotifier<bool> {
   @override
   Future<bool> build() async {
     final prefs = await SharedPreferences.getInstance();
-    final session = _supabase.auth.currentSession;
     final hasSecurity = (prefs.getBool('biometric_enabled') ?? false) ||
         (prefs.getBool('pin_enabled') ?? false);
-    // Locked if: has session + has security setup (meaning user was previously logged in)
-    return session != null && hasSecurity;
+    final hasSavedEmail = prefs.getString('saved_email') != null;
+    // Locked if: user was previously logged in + has security setup
+    // Use saved_email instead of currentSession since session may have expired
+    return hasSavedEmail && hasSecurity;
   }
 
   Future<void> lock() async {
@@ -87,9 +88,18 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
 
       if (!authenticated) throw Exception('Authentication failed');
 
-      final session = _supabase.auth.currentSession;
+      // Try to recover session if expired
+      var session = _supabase.auth.currentSession;
       if (session == null) {
-        throw Exception('No saved session. Please login with email first.');
+        try {
+          final response = await _supabase.auth.refreshSession();
+          session = response.session;
+        } catch (_) {}
+      }
+      if (session == null) {
+        // Session fully expired — clear locked state so user falls back to email login
+        await _clearLockedState();
+        throw Exception('Session expired. Please login with email.');
       }
 
       // Unlock
@@ -108,15 +118,35 @@ class LoginNotifier extends AutoDisposeAsyncNotifier<void> {
         throw Exception('Incorrect PIN');
       }
 
-      final session = _supabase.auth.currentSession;
+      // Try to recover session if expired
+      var session = _supabase.auth.currentSession;
       if (session == null) {
-        throw Exception('No saved session. Please login with email first.');
+        try {
+          final response = await _supabase.auth.refreshSession();
+          session = response.session;
+        } catch (_) {}
+      }
+      if (session == null) {
+        // Session fully expired — clear locked state so user falls back to email login
+        await _clearLockedState();
+        throw Exception('Session expired. Please login with email.');
       }
 
       // Unlock
       await ref.read(appLockedProvider.notifier).unlock();
       debugPrint('[auth] PIN login successful');
     });
+  }
+
+  Future<void> _clearLockedState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_email');
+    await prefs.remove('biometric_enabled');
+    await prefs.remove('pin_enabled');
+    await prefs.remove('app_pin');
+    await prefs.remove('security_setup_done');
+    await ref.read(appLockedProvider.notifier).unlock();
+    debugPrint('[auth] Cleared locked state — session fully expired');
   }
 
   Future<void> logout() async {

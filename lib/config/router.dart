@@ -37,19 +37,23 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/deals',
     refreshListenable: refresh,
     redirect: (context, state) {
-      final loggedIn = Supabase.instance.client.auth.currentSession != null;
+      final hasSession = Supabase.instance.client.auth.currentSession != null;
       final loc = state.matchedLocation;
       final onLogin = loc == '/login';
       final onTerms = loc == '/terms';
       final onSecurity = loc == '/security-setup';
       final lockedState = ref.read(appLockedProvider);
+      final isLocked = lockedState.valueOrNull ?? false;
+
+      // If app is locked (has saved email + security), show login for PIN/biometric
+      // even if session expired — the login flow will refresh the session
+      final loggedIn = hasSession || isLocked;
 
       // Not logged in at all → login
       if (!loggedIn && !onLogin) return '/login';
 
       if (loggedIn) {
         if (lockedState.isLoading) return null;
-        final isLocked = lockedState.valueOrNull ?? false;
 
         // App is locked → show login for PIN/biometric
         if (isLocked) return onLogin ? null : '/login';
