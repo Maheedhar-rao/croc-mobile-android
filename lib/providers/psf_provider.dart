@@ -72,8 +72,14 @@ class SendPsfNotifier extends AutoDisposeAsyncNotifier<Map<String, dynamic>?> {
   }) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) throw Exception('Not authenticated');
+      var session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        try {
+          final response = await Supabase.instance.client.auth.refreshSession();
+          session = response.session;
+        } catch (_) {}
+      }
+      if (session == null) throw Exception('Session expired. Please login again.');
 
       final body = <String, dynamic>{
         'deal_id': dealId,
